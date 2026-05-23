@@ -36,7 +36,7 @@ FreeIndulgence is an agent skill that reduces GenAI detection scores in academic
 Clone this repo into your project or workspace:
 
 ```bash
-git clone https://github.com/YOUR_USER/free-indulgence.git .skills/free-indulgence
+git clone git@github.com:AsdfAlex-learning/free-indulgence.git
 ```
 
 Then add to your `opencode.json`, `CLAUDE.md`, or `AGENTS.md`:
@@ -50,7 +50,7 @@ Then add to your `opencode.json`, `CLAUDE.md`, or `AGENTS.md`:
 **Option B: Install as a user-level skill**
 
 ```bash
-cp -r free-indulgence ~/.claude/skills/
+git clone git@github.com:AsdfAlex-learning/free-indulgence.git ~/.claude/skills/free-indulgence
 ```
 
 ### Usage
