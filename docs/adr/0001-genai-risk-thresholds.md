@@ -15,10 +15,10 @@ The Skill needs to quantify the GenAI detector risk (perplexity + burstiness) of
 | Score Range | Risk Level | Action |
 |-------------|------------|--------|
 | ≥5 | high | Flag for recommended forced rewrite (user can override) |
-| 2-4 | moderate | Warn the user, let them decide |
-| 0-1 | low | Skip, inform the user of low risk |
+| 1-4 | moderate | Warn the user, let them decide |
+| 0 | low | Skip, inform the user of low risk |
 
-### Scoring Dimensions and Weights (Max 16)
+### Scoring Dimensions and Weights (Max 19)
 
 | # | Dimension | Max Score | Threshold | Rationale |
 |---|-----------|-----------|-----------|-----------|
@@ -30,18 +30,20 @@ The Skill needs to quantify the GenAI detector risk (perplexity + burstiness) of
 | 6 | Hedging density | 1 | >0.3/sentence +1 | Auxiliary metric: excessive hedging increases predictability |
 | 7 | Filler density | 1 | >0.3/sentence +1 | Auxiliary metric: filler phrases are a common AI writing pattern |
 | 8 | Significance inflation | 1 | Present +1 | Auxiliary metric: inflated language is highly correlated with AI text |
+| 9 | Parenthesis density | 2 | >1.5/sentence +2, >0.8/sentence +1 | Over-explanation signal. AI text overuses parenthetical asides to layer explanations, creating a clustered, defensive writing pattern |
+| 10 | Bold-header + sub-total in small paragraphs | 1 | ≥2 paragraphs +1 | Template structure detection: small paragraphs (<100 words) with bold-header openers followed by sub-points and summary. Highly characteristic of AI survey/related-work sections |
 
 ### Weighting Rationale
 
-- **Perplexity dimensions (#1-3) carry the highest weight**: Lexical statistical features are the hardest to eliminate through simple rewriting, and detectors are most sensitive to them.
+- **Perplexity dimensions (#1-3, #9) carry the highest weight**: Lexical statistical features are the hardest to eliminate through simple rewriting, and detectors are most sensitive to them. Parenthesis density (#9) is added to the high-weight group because parenthetical over-explanation directly contributes to vocabulary predictability and sentence clutter.
 - **Burstiness dimensions (#4-5) come second**: Structural features can be improved through deliberate sentence-level adjustments, but require the Agent to understand and actively execute them.
-- **Surface patterns (#6-8) are auxiliary**: These are habitual expressions in AI writing; individually insufficient for judgment, but significantly increase risk when combined.
+- **Surface patterns (#6-8, #10) are auxiliary**: These are habitual expressions in AI writing; individually insufficient for judgment, but significantly increase risk when combined.
 
 ### Threshold Selection Rationale
 
-- **Score of 5** as the high threshold: Requires at least one primary dimension (AI vocabulary or sentence variance) to reach a high value, or two moderate dimensions to combine. This avoids forced rewriting triggered by a single false match.
-- **Score of 2** as the moderate threshold: A single mild anomaly in any dimension (a 1-point dimension hit) does not trigger a warning; requires at least two mild anomalies or one moderate anomaly.
-- **Score of 0-1** as low: The text is statistically very close to human writing.
+- **Score of 5** as the high threshold: Requires at least one primary dimension reaching a high value (e.g., AI vocab density >5% for +3), or a combination of several moderate anomalies. Set deliberately low to catch early-stage AI contamination.
+- **Score of 1** as the moderate threshold: A single 1-point anomaly triggers moderate. This is intentionally sensitive — even one hit of "leverage" or one instance of "Notably," flags the text for user review.
+- **Score of 0** as low: Only when no dimension triggers any anomaly. The text must be statistically clean across all 10 dimensions.
 
 ## Consequences
 

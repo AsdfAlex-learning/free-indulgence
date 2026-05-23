@@ -142,6 +142,46 @@ BULLET_PATTERNS = re.compile(
     r'^\s*([-*+•·]|(\d+[\.\)]\s)|(\(?\d+\)\s)|([a-z][\.\)]\s)|([🚀✅💡🔑🎯⚡📊🎨🛠️📌])|(\*\*[^*]+\*\*:))'
 )
 
+# Parenthetical over-explanation pattern
+PARENTHESIS_PATTERN = re.compile(r'\([^)]*\)')
+
+# Academic parenthetical patterns to exclude from density (citations, refs, stats, math)
+ACADEMIC_PAREN_PATTERNS = [
+    re.compile(r'\(see\s+(Fig|Table|Section|Figure|Equation|Eq|Algorithm|Appendix|Chapter)\b', re.IGNORECASE),
+    re.compile(r'\(\s*[§§]'),                                       # (§3.2)
+    re.compile(r'\(cf\.'),                                          # (cf. ...)
+    re.compile(r'\((e\.g|i\.e|etc|viz|vs)\.'),                      # (e.g., i.e., etc.)
+    re.compile(r'\(p\s*[<>=]'),                                     # (p < 0.01)
+    re.compile(r'\(n\s*='),                                         # (n = 100)
+    re.compile(r'\(N\s*='),                                         # (N = 100)
+    re.compile(r'\(\s*\d{4}\s*\)'),                                 # (2023)
+    re.compile(r'\((Fig|Table|Eq|Equation|Algorithm|Theorem|Lemma|Corollary)\b', re.IGNORECASE),  # (Figure 2)
+    re.compile(r'\([²³⁴⁵⁶⁷⁸⁹⁰¹]'),                                 # superscript references
+    re.compile(r'\(where\s'),                                       # (where x ∈ R^n)
+    re.compile(r'\([±]\s*\d+\.?\d*'),                               # (±0.5)
+    re.compile(r'\(\d+%\)'),                                        # (95%)
+    re.compile(r'\(\d+\.?\d*\s*[–-]\s*\d+\.?\d*\)'),               # (5–10)
+]
+
+def is_academic_paren(paren_text: str) -> bool:
+    """Check if a parenthetical expression is legitimate academic notation."""
+    for pattern in ACADEMIC_PAREN_PATTERNS:
+        if pattern.search(paren_text):
+            return True
+    return False
+
+# Bold-title opener for small-paragraph sub-total detection
+BOLD_TITLE_OPENER = re.compile(r'^\s*\*\*[^*]+\*\*:\s')
+
+# Common abbreviations ending with period (not sentence boundaries)
+ABBREVIATIONS = re.compile(r'\b(' + '|'.join([
+    'e\\.g', 'i\\.e', 'etc', 'vs', 'viz',
+    'Dr', 'Mr', 'Ms', 'Mrs', 'Prof', 'St', 'Dept',
+    'Fig', 'Table', 'Eq', 'Algo', 'Sec', 'Ch',
+    'ed', 'vol', 'no', 'pp', 'et al',
+    'al', 'cf', 'ca', 'approx',
+]) + r')\\.', re.IGNORECASE)
+
 TOTAL_SUB_TOTAL_OPENERS = [
     "there are several",
     "the following sections",
@@ -438,8 +478,13 @@ def _suggest_rewrite(text: str, hits: list[str]) -> str:
 
 # ── Prose Pattern Detection ──────────────────────────────────────────
 
-def detect_prose_patterns(prose_lines: list[str]) -> dict:
-    """Detect AI patterns in prose text."""
+def detect_prose_patterns(prose_lines: list[str], raw_text: str = None) -> dict:
+    """Detect AI patterns in prose text.
+    
+    Args:
+        prose_lines: Non-empty prose lines (blank lines stripped).
+        raw_text: Original prose text with blank lines preserved (for paragraph-level detection).
+    """
     text = '\n'.join(prose_lines)
     text_lower = text.lower()
 
@@ -462,8 +507,12 @@ def detect_prose_patterns(prose_lines: list[str]) -> dict:
     # Em-dash count
     em_dash_count = text.count('—')
 
-    # Sentence length variance
-    sentences = re.split(r'[.!?]+', text)
+    # Sentence length variance (with abbreviation-aware splitting)
+    # Mask abbreviation periods so they don't trigger false sentence boundaries
+    text_for_split = ABBREVIATIONS.sub(lambda m: m.group(0).replace('.', '\x00'), text)
+    sentences = re.split(r'[.!?]+', text_for_split)
+    # Restore masked characters for display
+    sentences = [s.replace('\x00', '.') for s in sentences]
     sentence_lengths = [len(s.split()) for s in sentences if s.strip()]
     if len(sentence_lengths) >= 3:
         avg_len = sum(sentence_lengths) / len(sentence_lengths)
@@ -475,6 +524,45 @@ def detect_prose_patterns(prose_lines: list[str]) -> dict:
     # More than 2 Moreover/Furthermore/Additionally in proximity
     connector_count = sum(1 for c in ["moreover", "furthermore", "additionally"]
                           if c in text_lower)
+
+    # Parenthesis density — over-explanation signal (excluding academic notation)
+    parenthesis_matches = PARENTHESIS_PATTERN.findall(text)
+    # Filter out academic/citation parentheses
+    non_academic_parens = [m for m in parenthesis_matches if not is_academic_paren(m)]
+    parenthesis_count = len(non_academic_parens)
+    parenthesis_density = parenthesis_count / max(len(sentence_lengths), 1)
+
+    # Bold-title + sub-total in small paragraphs (relative threshold)
+    # Uses raw_text (with blank lines preserved) for accurate paragraph boundary detection
+    para_text = raw_text or text
+    total_word_count = len(para_text.split())
+    if total_word_count >= 100:
+        max_small_para_words = max(50, min(100, int(total_word_count * 0.1)))  # floor 50, cap 100
+        bold_sub_total_paragraphs = 0
+        paragraphs = re.split(r'\n\s*\n', para_text)
+        for para in paragraphs:
+            para = para.strip()
+            if not para:
+                continue
+            para_words = len(para.split())
+            if para_words > max_small_para_words:
+                continue  # only small paragraphs
+            para_lines = para.split('\n')
+            has_bold_opener = any(BOLD_TITLE_OPENER.match(l) for l in para_lines)
+            if not has_bold_opener:
+                continue
+            # Check for sub-points or summary signals
+            para_lower = para.lower()
+            has_sub_total_openers = any(o in para_lower for o in TOTAL_SUB_TOTAL_OPENERS)
+            has_sub_total_closers = any(c in para_lower for c in TOTAL_SUB_TOTAL_CLOSERS)
+            has_bullets_inner = sum(1 for l in para_lines if BULLET_PATTERNS.match(l)) >= 2
+            # Also flag if it has 3+ sentences (definition → details → summary structure)
+            para_sentences = [s for s in re.split(r'[.!?]+', para) if s.strip()]
+            has_multi_sentence = len(para_sentences) >= 3
+            if has_sub_total_openers or has_sub_total_closers or has_bullets_inner or has_multi_sentence:
+                bold_sub_total_paragraphs += 1
+    else:
+        bold_sub_total_paragraphs = 0
 
     # Word count for perplexity proxy
     words = text_lower.split()
@@ -499,6 +587,9 @@ def detect_prose_patterns(prose_lines: list[str]) -> dict:
         "sentence_length_variance": round(variance, 1),
         "connector_repetition": connector_count,
         "sentence_count": len(sentence_lengths),
+        "parenthesis_count": parenthesis_count,
+        "parenthesis_density": round(parenthesis_density, 2),
+        "bold_sub_total_paragraphs": bold_sub_total_paragraphs,
     }
 
 
@@ -751,11 +842,34 @@ def classify_genai_risk(prose_result: dict) -> dict:
     else:
         breakdown["inflation_count"] = 0
 
+    # ── Perplexity Proxy: Parenthesis density (over-explanation) ──
+    parenthesis_density = prose_result.get("parenthesis_density", 0)
+    breakdown["parenthesis_density"] = parenthesis_density
+    if parenthesis_density > 1.5:
+        score += 2
+        breakdown["parenthesis_verdict"] = "high (>1.5 parentheses per sentence — over-explanation)"
+    elif parenthesis_density > 0.8:
+        score += 1
+        breakdown["parenthesis_verdict"] = "moderate (0.8-1.5 per sentence)"
+    else:
+        breakdown["parenthesis_verdict"] = "low (<0.8 per sentence)"
+
+    # ── Structural: Bold-header + sub-total in small paragraphs ──
+    bold_sub_total_count = prose_result.get("bold_sub_total_paragraphs", 0)
+    breakdown["bold_sub_total_paragraphs"] = bold_sub_total_count
+    if bold_sub_total_count >= 2:
+        score += 1
+        breakdown["bold_sub_total_verdict"] = (
+            f"present ({bold_sub_total_count} paragraphs with bold-header + sub-total pattern)"
+        )
+    else:
+        breakdown["bold_sub_total_verdict"] = "absent"
+
     # ── Final classification ──
     if score >= 5:
         tier = "high"
         tier_cn = "High GenAI risk — forced rewrite recommended"
-    elif score >= 2:
+    elif score >= 1:
         tier = "moderate"
         tier_cn = "Moderate GenAI risk — warn the user"
     else:
@@ -766,7 +880,7 @@ def classify_genai_risk(prose_result: dict) -> dict:
         "risk_tier": tier,
         "risk_tier_cn": tier_cn,
         "score": score,
-        "max_score": 16,
+        "max_score": 19,
         "breakdown": breakdown,
     }
 
@@ -803,8 +917,8 @@ def main():
 
     prose_lines = [l for l in prose_text.split('\n') if l.strip()]
 
-    # Analyze prose
-    prose_result = detect_prose_patterns(prose_lines)
+    # Analyze prose (pass raw_text for paragraph-level detection)
+    prose_result = detect_prose_patterns(prose_lines, raw_text=prose_text)
 
     # Detect connector logic blocks in prose
     connector_blocks = detect_connector_blocks(prose_text)
@@ -856,6 +970,8 @@ def main():
             "bullet_density": prose_result["bullet_density"],
             "has_total_sub_total": prose_result["has_total_sub_total"],
             "connector_blocks_count": len(connector_blocks),
+            "parenthesis_density": prose_result["parenthesis_density"],
+            "bold_sub_total_paragraphs": prose_result["bold_sub_total_paragraphs"],
             "genai_risk_tier": genai_risk["risk_tier"],
             "genai_risk_score": genai_risk["score"],
             "total_comments_tier2": sum(

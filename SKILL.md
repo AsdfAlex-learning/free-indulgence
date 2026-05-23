@@ -298,8 +298,15 @@ Go through this **mandatory checklist** item by item. Do NOT skip any item.
 □ 11. Connector Logic Blocks: Script found [N] logical blocks with sequential signposting
     (type: [list types]).
 
-□ 12. GenAI Risk Tier: Script reports [high/moderate/low] (score [N]/16).
+□ 12. GenAI Risk Tier: Script reports [high/moderate/low] (score [N]/19, high≥5 moderate≥1).
     Key factors: [list top 3 contributors to score]
+
+□ 13. Parenthesis Over-Explanation: Script reports density [N] per sentence.
+    If >0.8 per sentence → FLAG for over-use of parenthetical asides.
+
+□ 14. Bold-Header + Sub-Total in Small Paragraphs: Script reports [N] paragraphs
+    with bold-header + sub-total pattern in paragraphs <100 words.
+    If ≥2 → FLAG for template paragraph structure.
 ```
 
 ### Step 6: Produce Combined Diagnostic Report
@@ -321,7 +328,9 @@ Merge script results + checklist answers into the final diagnostic. Template:
 | Em-dash count | N | >2/para flagged | [PASS/FLAG] |
 | Sentence length variance | X.X | <5.0 flagged | [PASS/FLAG] |
 | Connector logic blocks | N blocks | types: [...] | [PASS/FLAG] |
-| GenAI risk tier | [high/moderate/low] | score [N]/16 | [Action] |
+| Parenthesis density | X/para | >0.8/para flagged | [PASS/FLAG] |
+| Bold-sub-total paragraphs | N | ≥2 flagged | [PASS/FLAG] |
+| GenAI risk tier | [high/moderate/low] | score [N]/19 | [Action] |
 
 ### GenAI Risk Breakdown
 | Factor | Value | Contribution |
@@ -334,7 +343,9 @@ Merge script results + checklist answers into the final diagnostic. Template:
 | Hedge stack density | X | [+N to score] |
 | Filler density | X | [+N to score] |
 | Significance inflation | N | [+N to score] |
-| **Total Score** | **N/16** | **→ [high/moderate/low]** |
+| Parenthesis density | X/para | [+N to score] |
+| Bold-sub-total paragraphs | N | [+N to score] |
+| **Total Score** | **N/19** | **→ [high (≥5) / moderate (1-4) / low (0)]** |
 
 ### Connector Logic Blocks
 | # | Sequence Type | Markers | Block Text (first 80 chars) |
@@ -616,6 +627,49 @@ AFTER:  The model achieves state-of-the-art performance on all benchmarks,
 **Script catches**: `In order to`, `Due to the fact that`, `At this point in time`, `In the event that`, `Has the ability to`, `It is important to note that`.
 
 **What to do**: Cut to 1-2 words. "In order to achieve" → "To achieve". "It is important to note that the data shows" → "The data shows."
+
+### 11. Excessive Parenthetical Over-Explanation
+
+**Script catches**: parenthesis_density > 0.8 per sentence.
+
+**What to check**: Too many parenthetical asides in close succession. AI text over-explains by stuffing clarifications, examples, or alternative names into parentheses — e.g., "Our method (a transformer-based architecture) achieves SOTA (95.2% accuracy) on five benchmarks (see Table 2)."
+
+**What to do**: Evaluate each parenthetical:
+- Can it be integrated into the sentence flow without parentheses?
+- Can it be removed entirely (reader doesn't need this clarification)?
+- Is it a genuine citation or reference (`(see Fig. 2)`, `(§3.2)`) — those are fine.
+- Break the cluster: if 3+ parentheticals appear in 2 sentences, spread them out or cut some.
+
+```
+BEFORE: The model (a 12-layer transformer) achieves 95.2% accuracy (5.3% improvement)
+        on ImageNet (1000-class) using our method (Algorithm 1).
+AFTER:  Our 12-layer transformer achieves 95.2% accuracy on ImageNet (1000 classes),
+        a 5.3% improvement over the baseline (Algorithm 1).
+```
+
+**Exception**: Math/technical writing may legitimately use parenthetical definitions `(where x ∈ R^n)`. Don't flag these — focus on explanatory/contextual parentheses.
+
+### 12. Bold-Header + Sub-Total in Small Paragraphs
+
+**Script catches**: ≥2 small paragraphs (min(100, 10% of text) words) with bold-header openers and sub-total internal structure.
+
+**What to check**: Small paragraphs that open with `**bold term**:` followed by a description, then sub-points or sub-categories, then a summary sentence. This is a miniaturized version of the total-sub-total template and is highly characteristic of AI-generated survey sections or related work.
+
+**What to do**: For each flagged paragraph:
+- Check if the bold header actually adds value or is decorative.
+- If the paragraph is genuinely short (<3 sentences), consider whether it needs to exist at all or could be merged.
+- Reorder: try stating the finding/summary first, then explaining.
+- Break the template by varying opener style — use a question, a data point, or a contrast instead of `**Term**: definition`.
+
+```
+BEFORE: **Transformer**: A neural architecture based on self-attention. It processes
+        sequences in parallel. Key components include multi-head attention and FFN.
+        Transformers are widely used in NLP and CV.
+
+AFTER:  Self-attention is the core idea behind transformers. By processing sequences
+        in parallel rather than sequentially, architectures like multi-head attention
+        and FFN layers achieve strong results across NLP and computer vision tasks.
+```
 
 ---
 

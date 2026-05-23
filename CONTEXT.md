@@ -38,21 +38,23 @@ AI detectors do not look at specific words; they measure statistical features.
 |------|------------|---------------|-------------------|
 | **Perplexity** | How difficult it is to predict the next word given the preceding context. Proxy metrics: AI vocabulary density, mechanical connector density, vocabulary diversity (unique/total ratio). | Every word is the statistically most likely choice | Varied, unpredictable word choices |
 | **Burstiness** | The degree of variation in sentence lengths within a paragraph. Proxy metrics: sentence length variance, bullet density. | Uniform sentence lengths, structured formatting | Mixed long and short sentences, varied structure |
-| **GenAI Risk** | Composite score of Perplexity + Burstiness (0-16). Quantified by the `detect.py` script. Three tiers: high (≥5, overly conformant), moderate (2-4, somewhat conformant), low (0-1, normal range). |
+| **GenAI Risk** | Composite score of Perplexity + Burstiness (0-19). Quantified by the `detect.py` script across 10 dimensions. Three tiers: high (≥5, overly conformant), moderate (1-4, somewhat conformant), low (0, normal range). |
 
 ---
 
 ## Structural Pattern
 
-Three types of structured writing patterns that appear in Prose, each triggering a different rewrite strategy.
+Five types of structured writing patterns that appear in Prose, each triggering a different rewrite strategy.
 
 | Term | Definition | Trigger Condition | Rewrite Direction |
 |------|------------|-------------------|-------------------|
 | **Connector Logic Block** | Cross-sentence/cross-paragraph sequences of sequential connectors (First... Second... Third... Finally...). 7 sequence types total. | Script detects ≥2 sequential markers within 200 words | Rewrite the entire block as one coherent argument. Focus: break mechanical repetition, uniform sentence patterns, enforce coherence, low perplexity + low burstiness. |
 | **Bullet Density** | Proportion of bullet points or numbered lists in Prose. | `bullet_density > 30%` | Force rewrite into coherent paragraphs. Specify "ensure slightly elevated burstiness." For coordinate relationships, emphasize differences; for subordinate relationships, explain the logic. |
 | **Total-Sub-Total** | Template structure within a single paragraph: overview sentence → sub-point group → summary sentence (often repeats the first). | LLM semantic judgment (script-assisted) | Restructure the paragraph, break the templated opening and repetitive ending. |
+| **Excessive Parentheses** | High density of parenthetical `(...)` asides within a short span. AI text over-explains by stacking clarifications, examples, and alternative names in parentheses. | `parenthesis_density > 0.8` per sentence | Evaluate each parenthetical: integrate into sentence flow, cut decoration, or break clusters. Preserve legitimate citations and math notation. |
+| **Bold-Header Sub-Total** | Small paragraphs (min(100, 10% of total text) words) that open with `**bold term**:` followed by sub-points and a summary sentence. Miniaturized version of Total-Sub-Total, characteristic of AI survey sections. | Script detects ≥2 such paragraphs | Vary opener style (question, data point, contrast), merge into surrounding text, or restructure away from template format. |
 
-> These are three different levels of problems and must not be handled together. Connector Block is a cross-sentence logical connection issue, Bullet is a visual formatting issue, and Total-Sub-Total is an internal paragraph structure issue.
+> These are five different levels of problems and must not be handled together. Connector Block is a cross-sentence logical connection issue, Bullet is a visual formatting issue, Total-Sub-Total is a single-paragraph structural issue, Excessive Parentheses is a sentence-level clutter issue, and Bold-Header Sub-Total is a paragraph-template issue.
 
 ---
 
@@ -82,3 +84,5 @@ Fields that the Agent needs to understand when reading script JSON output.
 | `genai_risk.risk_tier` | high / moderate / low | Script scoring |
 | `genai_risk.score` | Quantitative risk score (0-16) | Script scoring |
 | `code_blocks[].comments[].tier` | Per-comment Tier classification (1/2/3) | Script classification + LLM verification |
+| `prose.parenthesis_count` / `parenthesis_density` | Number of parenthetical `(...)` groups / groups per sentence | Script regex |
+| `prose.bold_sub_total_paragraphs` | Count of small paragraphs (<100 words) with bold-header opener + sub-total internal structure | Script detection |
